@@ -1,0 +1,5 @@
+To Do:
+
+- support collections and arrays in NativeHandler
+- clean up Logging code (auto-detect)
+- clean up and add more unit tests

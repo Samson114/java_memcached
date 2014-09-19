@@ -1,0 +1,162 @@
+Java 和memcached  
+
+http://suntengjiao1.blog.163.com/blog/static/992110882011101651619229/
+
+2011-11-16 17:16:19|  分类： memcached|举报|字号 订阅
+日志原文：http://blog.sohu.com/people/!bWFiaXFpYW5nQHNvaHUuY29t/70343632.html
+   
+
+ 最近一直在做一个项目的前期设计工作，考虑到后期系统的扩展和性能问题也找了很多解决方法，有一个就是用到了数据库的缓存工具memcached（当然该工具并不仅仅局限于数据库的缓存）。先简单的介绍下什么是memcached。
+    Memcached是高性能的，分布式的内存对象缓存系统，用于在动态应用中减少数据库负载，提升访问速度。Memcached由Danga Interactive开发，用于提升LiveJournal.com访问速度的。LJ每秒动态页面访问量几千次，用户700万。Memcached将数据库负载大幅度降低，更好的分配资源，更快速访问。
+    上网baidu了很多东西，几乎都差不多，而且基于java的说的很少，所有只有在研究了各个其他语言类的应用后再来尝试在java上进行简单的操作应用。先从memcached上进行说明，memcached的最新版是采用c语言进行开发和设计的，据说旧版的是采用perl语言开发的，而且它是一个应用软件来的，是作为缓存服务器的服务器端运行在服务器上的，需要使用特定的语言编写客户端与其进行通信来进行数据的缓存和获取。通常我们是把memcached安装运行在web服务器上，然后通过对需要的数据进行缓存，据我目前所知，所有数据的缓存设置和存取操作，以及数据的更新后替换操作全部需要程序来进行，而不是自动进行的（自动不知道能不能成功，呵呵）。下面从一个实际的例子来应用memcached。
+    首先到http://danga.com/memcached/下载memcached的windows版本和java客户端jar包，目前最新版本是memcached-1.2.1-win32.zip和java_memcached-release_1.6.zip，分别解压后即可！首先是安装运行memcached服务器，我们将memcached-1.2.1-win32.zip解压后，进入其目录，然后运行如下命令：
+c:>memcached.exe -d install
+c:>memcached.exe -l 127.0.0.1 -m 32 -d start
+    第一行是安装memcached成为服务，这样才能正常运行，否则运行失败！第一行是启动memcached的，作为测试我们就简单的只分配32M内存了，然后监听本机端口和以守护进行运行。执行完毕后，我们就可以在任务管理器中见到memcached.exe这个进程了。好了，我们的服务器已经正常运行了， 下面我们就来写java的客户端连接程序。
+    我们将java_memcached-release_1.6.zip解压后的目录中的java_memcached-release_1.6.jar文件复制到java项目的lib目录下，然后我们来编写代码，比如我提供的一个应用类如下：
+package utils.cache;
+
+import java.util.Date;
+
+import com.danga.MemCached.MemCachedClient;
+import com.danga.MemCached.SockIOPool;
+
+
+/**
+* 使用memcached的缓存实用类.
+* 
+* @author 铁木箱子
+*
+*/
+public class MemCached
+{
+    // 创建全局的唯一实例
+    protected static MemCachedClient mcc = new MemCachedClient();
+    
+    protected static MemCached memCached = new MemCached();
+    
+    // 设置与缓存服务器的连接池
+    static {
+        // 服务器列表和其权重
+        String[] servers = {"127.0.0.1:11211"};
+        Integer[] weights = {3};
+
+        // 获取socke连接池的实例对象
+        SockIOPool pool = SockIOPool.getInstance();
+
+        // 设置服务器信息
+        pool.setServers( servers );
+        pool.setWeights( weights );
+
+        // 设置初始连接数、最小和最大连接数以及最大处理时间
+        pool.setInitConn( 5 );
+        pool.setMinConn( 5 );
+        pool.setMaxConn( 250 );
+        pool.setMaxIdle( 1000 * 60 * 60 * 6 );
+
+        // 设置主线程的睡眠时间
+        pool.setMaintSleep( 30 );
+
+        // 设置TCP的参数，连接超时等
+        pool.setNagle( false );
+        pool.setSocketTO( 3000 );
+        pool.setSocketConnectTO( 0 );
+
+        // 初始化连接池
+        pool.initialize();
+
+        // 压缩设置，超过指定大小（单位为K）的数据都会被压缩
+        mcc.setCompressEnable( true );
+        mcc.setCompressThreshold( 64 * 1024 );
+    }
+    
+    /**
+     * 保护型构造方法，不允许实例化！
+     *
+     */
+    protected MemCached()
+    {
+        
+    }
+    
+    /**
+     * 获取唯一实例.
+     * @return
+     */
+    public static MemCached getInstance()
+    {
+        return memCached;
+    }
+    
+    /**
+     * 添加一个指定的值到缓存中.
+     * @param key
+     * @param value
+     * @return
+     */
+    public boolean add(String key, Object value)
+    {
+        return mcc.add(key, value);
+    }
+    
+    public boolean add(String key, Object value, Date expiry)
+    {
+        return mcc.add(key, value, expiry);
+    }
+    
+    public boolean replace(String key, Object value)
+    {
+        return mcc.replace(key, value);
+    }
+    
+    public boolean replace(String key, Object value, Date expiry)
+    {
+        return mcc.replace(key, value, expiry);
+    }
+    
+    /**
+     * 根据指定的关键字获取对象.
+     * @param key
+     * @return
+     */
+    public Object get(String key)
+    {
+        return mcc.get(key);
+    }
+    
+    public static void main(String[] args)
+    {
+        MemCached cache = MemCached.getInstance();
+        cache.add("hello", 234);
+        System.out.print("get value : " + cache.get("hello"));
+    }
+}
+    那么我们就可以通过简单的像main方法中操作的一样存入一个变量，然后再取出进行查看，我们可以看到先调用了add，然后再进行get，我们运行一次后，234这个值已经被我们存入了memcached的缓存中的了，我们将main方法中红色的那一行注释掉后，我们再运行还是可以看到get到的value也是234，即缓存中我们已经存在了数据了。
+    对基本的数据我们可以操作，对于普通的POJO而言，如果要进行存储的话，那么比如让其实现java.io.Serializable接口，因为memcached是一个分布式的缓存服务器，多台服务器间进行数据共享需要将对象序列化的，所以必须实现该接口，否则会报错的。比如我们写一个简单的测试Bean如下：
+class TBean implements java.io.Serializable
+{
+    private static final long serialVersionUID = 1945562032261336919L;
+    
+    private String name;
+
+    public String getName()
+    {
+        return name;
+    }
+
+    public void setName(String name)
+    {
+        this.name = name;
+    }
+}
+    然后我们在main方法中加入如下几行代码：
+TBean tb = new TBean();
+tb.setName("铁木箱子");
+cache.add("bean", tb);
+TBean tb1 = (TBean)cache.get("bean");
+System.out.print("name=" + tb1.getName());
+tb1.setName("铁木箱子_修改的");
+tb1 = (TBean)cache.get("bean");
+System.out.print("name=" + tb1.getName());
+    我们首先把TBean的一个实例放入缓存中，然后再取出来，并进行名称的修改，然后我们再取这个对象，我们再看其名称，发现修改的对象并不是缓存中的对象，而是通过序列化过来的一个实例对象，这样我们就无须担心对原生类的无意修改导致缓存数据失效了，呵呵~~看来我也是多此一想啊。所以这表明从缓存中获取的对象是存入对象的一个副本，对获取对象的修改并不能真正的修改缓存中的数据，而应该使用其提供的replace等方法来进行修改。
+    以上是我在windows下对memcached的一点小学习和实践，在以后的项目开发过程中将会更深入的学习和应用这一缓存工具，也希望和有兴趣的同行一起讨论学习该工具的使用~~ 
